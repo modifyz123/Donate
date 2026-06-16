@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+<meta charset="UTF-8"/>
+<title>Top Donate</title>
+<link href="https://fonts.googleapis.com/css2?family=Pridi:wght@600;700&display=swap" rel="stylesheet"/>
+<script src="/socket.io/socket.io.js"></script>
+<style>
+* { margin:0; padding:0; box-sizing:border-box; }
+body { background: transparent; font-family: 'Pridi', sans-serif; padding: 12px; }
+.top-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 6px;
+  background: rgba(0,0,0,0.6);
+  border-radius: 10px;
+  padding: 8px 14px;
+  backdrop-filter: blur(4px);
+}
+.medal { font-size: 22px; }
+.name { flex:1; font-size:18px; font-weight:700; color:#fff; text-shadow:0 2px 4px rgba(0,0,0,0.8); }
+.amount { font-size:18px; font-weight:700; color:#ffc107; text-shadow:0 2px 4px rgba(0,0,0,0.8); }
+</style>
+</head>
+<body>
+<div id="top-list"></div>
+<script>
+const params = new URLSearchParams(location.search);
+const token = params.get('token');
+const medals = ['🥇','🥈','🥉'];
+
+async function load() {
+  try {
+    const r = await fetch('/api/donations/top');
+    const data = await r.json();
+    const el = document.getElementById('top-list');
+    el.innerHTML = data.map((d,i) => `
+      <div class="top-item">
+        <span class="medal">${medals[i]}</span>
+        <span class="name">${d.name}</span>
+        <span class="amount">฿${Number(d.total).toLocaleString('th-TH',{minimumFractionDigits:2})}</span>
+      </div>
+    `).join('');
+  } catch(e) {}
+}
+
+load();
+const socket = io('/');
+socket.on('connect', () => socket.emit('join-room', { room: 'top', token }));
+socket.on('top-updated', load);
+</script>
+</body>
+</html>

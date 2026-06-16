@@ -1,0 +1,126 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>Donate Alert</title>
+<link href="https://fonts.googleapis.com/css2?family=Pridi:wght@600;700&family=Kanit:wght@600;700&family=Chakra+Petch:wght@700&display=swap" rel="stylesheet"/>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/animate.css/4.1.1/animate.min.css"/>
+<script src="/socket.io/socket.io.js"></script>
+<style>
+* { margin:0; padding:0; box-sizing:border-box; }
+body { background: transparent; overflow: hidden; width: 800px; height: 200px; }
+#alert-wrap {
+  display: none;
+  width: 100%;
+  height: 100%;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  padding: 20px;
+}
+#alert-wrap.show { display: flex; }
+#alert-name { font-weight: 700; line-height: 1.2; }
+#alert-message { margin-top: 6px; }
+</style>
+</head>
+<body>
+<div id="alert-wrap">
+  <div>
+    <div id="alert-name"></div>
+    <div id="alert-message"></div>
+  </div>
+</div>
+
+<script>
+const params = new URLSearchParams(location.search);
+const token = params.get('token');
+
+// Fetch settings from API
+let cfg = {};
+let queue = [];
+let busy = false;
+
+async function loadSettings() {
+  try {
+    const r = await fetch('/api/settings');
+    const d = await r.json();
+    cfg = d.settings;
+  } catch(e) {}
+}
+
+function applyStyles() {
+  const wrap = document.getElementById('alert-wrap');
+  const name = document.getElementById('alert-name');
+  const msg = document.getElementById('alert-message');
+  name.style.fontFamily = cfg.alert_font || 'Pridi';
+  name.style.fontSize = (cfg.alert_font_size || 48) + 'px';
+  name.style.color = cfg.alert_text_color || '#cc0000';
+  msg.style.fontFamily = cfg.alert_font || 'Pridi';
+  msg.style.fontSize = '18px';
+  msg.style.color = cfg.alert_message_color || '#cc44cc';
+}
+
+function showDonation(donation) {
+  return new Promise(async (resolve) => {
+    await loadSettings();
+    applyStyles();
+
+    const wrap = document.getElementById('alert-wrap');
+    const name = document.getElementById('alert-name');
+    const msg = document.getElementById('alert-message');
+    const animIn = cfg.alert_animation_in || 'fadeIn';
+    const animOut = cfg.alert_animation_out || 'bounceOut';
+    const duration = parseInt(cfg.alert_duration || 10) * 1000;
+
+    const highlight = cfg.alert_highlight_color || '#f5a623';
+    const donateMsg = cfg.alert_message || 'ให้ค่าขนม';
+
+    name.innerHTML = `${donation.name} <span style="color:${highlight}">${donateMsg}</span> <span style="color:${highlight}">฿${Number(donation.amount).toLocaleString('th-TH')}</span>`;
+    msg.textContent = donation.message || '';
+
+    wrap.className = `show animate__animated animate__${animIn}`;
+
+    // TTS
+    if (cfg.alert_tts_enabled === 'true') {
+      const text = `${donation.name} ${donateMsg} ${donation.amount} บาท ${donation.message || ''}`;
+      const utt = new SpeechSynthesisUtterance(text);
+      utt.lang = 'th-TH';
+      utt.rate = parseFloat(cfg.alert_tts_rate || 1);
+      speechSynthesis.speak(utt);
+    }
+
+    setTimeout(() => {
+      wrap.className = `show animate__animated animate__${animOut}`;
+      wrap.addEventListener('animationend', () => {
+        wrap.className = '';
+        speechSynthesis.cancel();
+        resolve();
+      }, { once: true });
+    }, duration);
+  });
+}
+
+async function processQueue() {
+  if (busy || queue.length === 0) return;
+  busy = true;
+  const donation = queue.shift();
+  await showDonation(donation);
+  busy = false;
+  processQueue();
+}
+
+loadSettings().then(() => {
+  const socket = io('/');
+  socket.on('connect', () => {
+    socket.emit('join-room', { room: 'alert', token });
+  });
+  socket.on('new-donation', (donation) => {
+    queue.push(donation);
+    processQueue();
+  });
+  socket.on('settings-updated', loadSettings);
+});
+</script>
+</body>
+</html>
